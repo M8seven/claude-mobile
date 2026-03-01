@@ -1,0 +1,21 @@
+{
+  "name": "claude-mobile",
+  "version": "0.1.0",
+  "description": "Claude Code for iPad — agentic coding tool in pure JS, zero native deps",
+  "main": "cli.js",
+  "bin": {
+    "claude-mobile": "./cli.js"
+  },
+  "scripts": {
+    "start": "node cli.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "isomorphic-git": "^1.27.1"
+  },
+  "keywords": ["claude", "coding", "ipad", "mobile", "ai"],
+  "license": "MIT",
+  "author": "m87"
+}

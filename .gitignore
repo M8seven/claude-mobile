@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+*.log
+
+# claude-mobile config (may contain secrets / session tokens)
+.claude-mobile/
+.claude-mobile.json
+.env
+.env.*
