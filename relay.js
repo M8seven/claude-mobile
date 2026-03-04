@@ -65,13 +65,12 @@ function authenticate(req) {
   const provided = authHeader.slice(7).trim();
   if (!provided) return false;
 
-  // Timing-safe comparison
+  // Timing-safe comparison — pad both to equal length to satisfy timingSafeEqual
   try {
-    const a = Buffer.from(provided.padEnd(CONFIG.token.length));
-    const b = Buffer.from(CONFIG.token.padEnd(provided.length));
+    const maxLen = Math.max(provided.length, CONFIG.token.length);
     return crypto.timingSafeEqual(
-      Buffer.from(provided.padEnd(Math.max(provided.length, CONFIG.token.length))),
-      Buffer.from(CONFIG.token.padEnd(Math.max(provided.length, CONFIG.token.length)))
+      Buffer.from(provided.padEnd(maxLen)),
+      Buffer.from(CONFIG.token.padEnd(maxLen))
     );
   } catch {
     return false;

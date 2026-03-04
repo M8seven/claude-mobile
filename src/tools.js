@@ -425,12 +425,40 @@ function execViaRelay(command, cwd, relayUrl, relayToken) {
   });
 }
 
+/**
+ * Split a shell command on a separator string (e.g. ' && ' or ' | ')
+ * while ignoring occurrences inside single- or double-quoted strings.
+ * Returns an array of parts, or null if the separator was not found outside quotes.
+ */
+function splitOutsideQuotes(command, sep) {
+  const parts = [];
+  let current = '';
+  let inSingle = false;
+  let inDouble = false;
+  let i = 0;
+  while (i < command.length) {
+    const c = command[i];
+    if (c === "'" && !inDouble) { inSingle = !inSingle; current += c; i++; continue; }
+    if (c === '"' && !inSingle) { inDouble = !inDouble; current += c; i++; continue; }
+    if (!inSingle && !inDouble && command.startsWith(sep, i)) {
+      parts.push(current);
+      current = '';
+      i += sep.length;
+      continue;
+    }
+    current += c;
+    i++;
+  }
+  parts.push(current);
+  return parts.length > 1 ? parts : null;
+}
+
 function jsShell(command, cwd) {
-  // Handle && chains
-  if (command.includes(' && ')) {
-    const parts = command.split(' && ');
+  // Handle && chains (quote-aware)
+  const andParts = splitOutsideQuotes(command, ' && ');
+  if (andParts) {
     let output = '';
-    for (const part of parts) {
+    for (const part of andParts) {
       const result = execSingle(part.trim(), cwd);
       if (result.error) return output + result.output;
       output += result.output;
@@ -438,11 +466,11 @@ function jsShell(command, cwd) {
     return output || '(no output)';
   }
 
-  // Handle pipes (basic: cmd1 | cmd2)
-  if (command.includes(' | ')) {
-    const parts = command.split(' | ');
+  // Handle pipes (basic: cmd1 | cmd2) — quote-aware
+  const pipeParts = splitOutsideQuotes(command, ' | ');
+  if (pipeParts) {
     let input = '';
-    for (const part of parts) {
+    for (const part of pipeParts) {
       const result = execSingle(part.trim(), cwd, input);
       if (result.error) return result.output;
       input = result.output;
@@ -647,11 +675,17 @@ function execSingle(command, cwd, pipeInput) {
         const flags = args.filter(a => a.startsWith('-')).join('');
         const nonFlags = args.filter(a => !a.startsWith('-'));
         const pattern = nonFlags[0];
+        if (!pattern) { output = 'Error: grep requires a pattern\n'; error = true; break; }
         const file = nonFlags[1];
         const content = file
           ? fs.readFileSync(resolvePath(file, cwd), 'utf-8')
           : (pipeInput || '');
-        const regex = new RegExp(pattern, flags.includes('i') ? 'i' : '');
+        let regex;
+        try {
+          regex = new RegExp(pattern, flags.includes('i') ? 'i' : '');
+        } catch (e) {
+          output = `Error: invalid regex: ${e.message}\n`; error = true; break;
+        }
         const invert = flags.includes('v');
         const lines = content.split('\n').filter(l => invert ? !regex.test(l) : regex.test(l));
         output = lines.join('\n') + '\n';
@@ -895,6 +929,11 @@ async function toolGit(input, cwd) {
   const cfg = loadConfig();
   const args = input.args || {};
   const dir = args.dir ? resolvePath(args.dir, cwd) : cwd;
+
+  // Verify this is actually a git repository before calling any isomorphic-git API
+  if (!fs.existsSync(path.join(dir, '.git'))) {
+    return `Error: '${dir}' is not a git repository (no .git directory found).`;
+  }
 
   const onAuth = () => ({
     username: cfg.githubToken || 'token',

@@ -95,10 +95,11 @@ class AnthropicAPI {
 }
 
 function collectBody(response) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     let data = '';
     response.on('data', (chunk) => data += chunk);
     response.on('end', () => resolve(data));
+    response.on('error', reject);
   });
 }
 
