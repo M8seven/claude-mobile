@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Claude Mobile</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --text: #e6edf3;
+    --text-dim: #7d8590;
+    --text-dimmer: #484f58;
+    --text-bright: #f0f6fc;
+    --text-user: #79c0ff;
+    --accent: #58a6ff;
+    --border: #30363d;
+    --tool-color: #3d4450;
+    --code-bg: #161b22;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --font: 'SF Mono', Menlo, 'Cascadia Code', monospace;
+  }
+
+  html, body {
+    height: 100%; width: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: var(--font); font-size: 13px; line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* ─── Setup Screen ─── */
+  #setup-screen {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; height: 100%; padding: 32px 24px; gap: 24px;
+  }
+  #setup-screen h1 { font-size: 22px; font-weight: 600; color: var(--text-bright); }
+  #setup-screen .subtitle { color: var(--text-dim); font-size: 12px; text-align: center; margin-top: -16px; }
+  .setup-form { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 420px; }
+  .setup-label { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+  .setup-input, .setup-select {
+    width: 100%; background: var(--bg-secondary); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-family: var(--font);
+    font-size: 13px; padding: 10px 12px; outline: none;
+    -webkit-appearance: none; appearance: none;
+  }
+  .setup-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath fill='%237d8590' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px;
+  }
+  .setup-input:focus, .setup-select:focus { border-color: var(--accent); }
+  .setup-btn {
+    background: var(--accent); border: none; border-radius: 6px; color: #0d1117;
+    font-family: var(--font); font-size: 13px; font-weight: 600;
+    padding: 12px; cursor: pointer; margin-top: 4px;
+  }
+  .setup-btn:active { opacity: 0.8; }
+
+  /* ─── Main App ─── */
+  #app { display: none; flex-direction: column; height: 100%; height: 100dvh; }
+
+  /* ─── Status Bar ─── */
+  #status-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px 8px 16px; background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
+  #status-left { display: flex; flex-direction: column; gap: 1px; }
+  #status-model { color: var(--text-bright); font-size: 12px; font-weight: 600; }
+  #status-cwd { color: var(--text-dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px; }
+  #gear-btn {
+    background: none; border: none; color: var(--text-dim); cursor: pointer;
+    padding: 6px; border-radius: 4px; font-size: 16px; line-height: 1;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #gear-btn:active { color: var(--text); }
+
+  /* ─── Messages ─── */
+  #messages {
+    flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px 0 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .msg-block { padding: 2px 16px; word-break: break-word; overflow-wrap: anywhere; }
+  .msg-block + .msg-block { border-top: 1px solid #1c2128; margin-top: 6px; padding-top: 8px; }
+  .user-line { color: var(--text-user); white-space: pre-wrap; }
+  .user-line::before { content: '> '; color: var(--green); }
+  .assistant-text { color: var(--text); white-space: pre-wrap; }
+  .tool-line { color: var(--text-dimmer); padding: 2px 0; display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .tool-line::before { content: '  \2500'; color: var(--tool-color); flex-shrink: 0; }
+  .tool-name { color: var(--text-dim); font-weight: 600; }
+  .tool-detail { color: var(--text-dimmer); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .token-usage { color: var(--text-dimmer); font-size: 11px; padding: 2px 0; margin-top: 2px; }
+  .error-line { color: var(--red); font-size: 12px; padding: 4px 0; }
+  .info-line { color: var(--yellow); font-size: 12px; padding: 4px 0; }
+
+  /* ─── Markdown ─── */
+  .md-code-block {
+    display: block; background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 12px; margin: 6px 0; overflow-x: auto;
+    white-space: pre; font-size: 12px; line-height: 1.5; color: var(--text);
+    -webkit-overflow-scrolling: touch;
+  }
+  .md-inline-code { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; font-size: 12px; color: #ffa657; }
+  .md-bold { font-weight: 700; color: var(--text-bright); }
+  .md-italic { font-style: italic; }
+  .md-list-item { display: block; padding-left: 16px; position: relative; }
+  .md-list-item::before { content: '\2022'; position: absolute; left: 4px; color: var(--text-dim); }
+  .md-h1, .md-h2, .md-h3 { color: var(--text-bright); font-weight: 700; display: block; margin: 6px 0 2px; }
+  .md-h1 { font-size: 16px; } .md-h2 { font-size: 14px; } .md-h3 { font-size: 13px; }
+
+  /* ─── Input ─── */
+  #input-area {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    background: var(--bg-secondary); border-top: 1px solid var(--border); flex-shrink: 0;
+  }
+  #user-input {
+    flex: 1; height: 44px; background: var(--bg-tertiary);
+    border: 1px solid var(--border); border-radius: 8px; color: var(--text);
+    font-family: var(--font); font-size: 13px; padding: 0 12px; outline: none;
+    -webkit-appearance: none;
+  }
+  #user-input:focus { border-color: var(--accent); }
+  #user-input::placeholder { color: var(--text-dimmer); }
+  #send-btn {
+    width: 44px; height: 44px; background: var(--accent); border: none;
+    border-radius: 8px; color: #0d1117; font-size: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #send-btn:active { opacity: 0.75; }
+  #send-btn:disabled { opacity: 0.4; cursor: default; }
+  #abort-btn {
+    width: 44px; height: 44px; background: var(--bg-tertiary);
+    border: 1px solid var(--border); border-radius: 8px; color: var(--red);
+    font-size: 14px; cursor: pointer; display: none; align-items: center;
+    justify-content: center; flex-shrink: 0; -webkit-tap-highlight-color: transparent;
+  }
+  #abort-btn.visible { display: flex; }
+
+  /* ─── Settings ─── */
+  #settings-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100;
+    align-items: flex-end;
+  }
+  #settings-overlay.visible { display: flex; }
+  #settings-panel {
+    width: 100%; background: var(--bg-secondary); border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0; padding: 20px;
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  #settings-panel h2 { font-size: 15px; font-weight: 600; color: var(--text-bright); }
+  .settings-actions { display: flex; gap: 8px; margin-top: 4px; }
+  .settings-btn {
+    flex: 1; background: var(--bg-tertiary); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text); font-family: var(--font);
+    font-size: 12px; padding: 10px; cursor: pointer;
+  }
+  .settings-btn:active { background: var(--border); }
+  .settings-btn.danger { color: var(--red); border-color: var(--red); }
+  .settings-btn.primary { background: var(--accent); color: #0d1117; border-color: var(--accent); font-weight: 600; }
+
+  /* ─── Cursor ─── */
+  .streaming-cursor::after { content: '\25CB'; animation: blink 1s step-start infinite; color: var(--accent); }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+
+<div id="setup-screen">
+  <h1>Claude Mobile</h1>
+  <p class="subtitle">Direct API &middot; SSE Streaming &middot; Tool Execution</p>
+  <div class="setup-form">
+    <div>
+      <div class="setup-label">Anthropic API Key</div>
+      <input type="password" class="setup-input" id="setup-key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+    </div>
+    <div>
+      <div class="setup-label">Model</div>
+      <select class="setup-select" id="setup-model">
+        <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+        <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
+        <option value="claude-opus-4-6">claude-opus-4-6</option>
+      </select>
+    </div>
+    <button class="setup-btn" id="setup-start">Start</button>
+  </div>
+</div>
+
+<div id="app">
+  <div id="status-bar">
+    <div id="status-left">
+      <div id="status-model">claude-sonnet-4-6</div>
+      <div id="status-cwd">connecting...</div>
+    </div>
+    <button id="gear-btn" title="Settings">&#9881;</button>
+  </div>
+  <div id="messages"></div>
+  <div id="input-area">
+    <input type="text" id="user-input" placeholder="Message Claude..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    <button id="abort-btn" title="Stop">&#9632;</button>
+    <button id="send-btn" title="Send">&#8594;</button>
+  </div>
+</div>
+
+<div id="settings-overlay">
+  <div id="settings-panel">
+    <h2>Settings</h2>
+    <div>
+      <div class="setup-label">API Key</div>
+      <input type="password" class="setup-input" id="settings-key" placeholder="sk-ant-..." autocomplete="off" spellcheck="false">
+    </div>
+    <div>
+      <div class="setup-label">Model</div>
+      <select class="setup-select" id="settings-model">
+        <option value="claude-sonnet-4-6">claude-sonnet-4-6</option>
+        <option value="claude-haiku-4-5-20251001">claude-haiku-4-5-20251001</option>
+        <option value="claude-opus-4-6">claude-opus-4-6</option>
+      </select>
+    </div>
+    <div class="settings-actions">
+      <button class="settings-btn danger" id="settings-clear">Clear Chat</button>
+      <button class="settings-btn" id="settings-cancel">Cancel</button>
+      <button class="settings-btn primary" id="settings-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+var API_URL = 'https://api.anthropic.com/v1/messages';
+var MAX_ITERATIONS = 50;
+var MAX_TOOL_RETRIES = 3;
+
+var state = {
+  apiKey: '',
+  model: 'claude-sonnet-4-6',
+  messages: [],
+  cwd: '~',
+  streaming: false,
+  abortController: null
+};
+
+var TOOLS = [
+  { name: 'Read', description: 'Read file contents.', input_schema: { type: 'object', properties: { file_path: { type: 'string', description: 'Absolute path to file.' }, offset: { type: 'integer', description: 'Start line (1-indexed).' }, limit: { type: 'integer', description: 'Max lines to read.' } }, required: ['file_path'] } },
+  { name: 'Write', description: 'Create or overwrite a file.', input_schema: { type: 'object', properties: { file_path: { type: 'string', description: 'Absolute path.' }, content: { type: 'string', description: 'File content.' } }, required: ['file_path', 'content'] } },
+  { name: 'Edit', description: 'Replace a unique string in a file.', input_schema: { type: 'object', properties: { file_path: { type: 'string', description: 'Absolute path.' }, old_string: { type: 'string', description: 'Exact string to find.' }, new_string: { type: 'string', description: 'Replacement string.' } }, required: ['file_path', 'old_string', 'new_string'] } },
+  { name: 'Glob', description: 'Find files by glob pattern.', input_schema: { type: 'object', properties: { pattern: { type: 'string', description: 'Glob pattern (e.g. **/*.js).' }, path: { type: 'string', description: 'Base directory.' } }, required: ['pattern'] } },
+  { name: 'Grep', description: 'Search file contents with regex.', input_schema: { type: 'object', properties: { pattern: { type: 'string', description: 'Regex pattern.' }, path: { type: 'string', description: 'Directory to search.' }, include: { type: 'string', description: 'File glob filter (e.g. *.js).' } }, required: ['pattern'] } },
+  { name: 'Bash', description: 'Run a shell command.', input_schema: { type: 'object', properties: { command: { type: 'string', description: 'Shell command.' } }, required: ['command'] } },
+  { name: 'Git', description: 'Run a git operation.', input_schema: { type: 'object', properties: { subcommand: { type: 'string', description: 'status, add, commit, push, pull, log, diff, branch, checkout.' }, args: { type: 'object', description: 'Arguments as key-value pairs.' } }, required: ['subcommand'] } }
+];
+
+function buildSystemPrompt() {
+  return 'You are Claude, an AI coding assistant running on iPad via claude-mobile.\n' +
+    'You help with software engineering: writing, debugging, refactoring, exploring code.\n\n' +
+    '# Tools\n- Read: read file contents\n- Write: create/overwrite a file\n- Edit: replace a string in a file (old_string -> new_string)\n' +
+    '- Glob: find files by pattern\n- Grep: search file contents with regex\n- Bash: run shell commands\n' +
+    '- Git: git operations (status, add, commit, push, pull, log, diff, branch, checkout)\n\n' +
+    '# Guidelines\n- Read files before editing\n- Make minimal, focused changes\n- Use Glob/Grep to explore before modifying\n- Be concise\n\n' +
+    '# Environment\n- Platform: iPad\n- Date: ' + new Date().toISOString().split('T')[0] + '\n- Working directory: ' + state.cwd;
+}
+
+// ─── Markdown ─────────────────────────────────────────────────
+function renderMarkdown(text) {
+  var frag = document.createDocumentFragment();
+  var parts = text.split(/(```[\s\S]*?```)/g);
+  parts.forEach(function(part) {
+    if (part.startsWith('```')) {
+      var inner = part.slice(3, -3);
+      var nl = inner.indexOf('\n');
+      var code = nl > -1 ? inner.slice(nl + 1) : inner;
+      var pre = document.createElement('code');
+      pre.className = 'md-code-block';
+      pre.textContent = code;
+      frag.appendChild(pre);
+    } else {
+      var lines = part.split('\n');
+      lines.forEach(function(line, i) {
+        var span = document.createElement('span');
+        span.className = 'md-block';
+        if (/^# /.test(line)) { span.className = 'md-h1'; line = line.slice(2); }
+        else if (/^## /.test(line)) { span.className = 'md-h2'; line = line.slice(3); }
+        else if (/^### /.test(line)) { span.className = 'md-h3'; line = line.slice(4); }
+        else if (/^\s*[-*] /.test(line)) { span.className = 'md-list-item'; line = line.replace(/^\s*[-*] /, ''); }
+        var h = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        h = h.replace(/`([^`]+)`/g, '<span class="md-inline-code">$1</span>');
+        h = h.replace(/\*\*([^*]+)\*\*/g, '<span class="md-bold">$1</span>');
+        h = h.replace(/\*([^*]+)\*/g, '<span class="md-italic">$1</span>');
+        span.innerHTML = h;
+        frag.appendChild(span);
+        if (i < lines.length - 1) frag.appendChild(document.createTextNode('\n'));
+      });
+    }
+  });
+  return frag;
+}
+
+// ─── UI ───────────────────────────────────────────────────────
+var messagesEl = document.getElementById('messages');
+var userInputEl = document.getElementById('user-input');
+var sendBtn = document.getElementById('send-btn');
+var abortBtn = document.getElementById('abort-btn');
+
+function scrollToBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
+
+function createMsgBlock() {
+  var b = document.createElement('div'); b.className = 'msg-block';
+  messagesEl.appendChild(b); return b;
+}
+
+function appendUserMessage(text) {
+  var b = createMsgBlock();
+  var l = document.createElement('div'); l.className = 'user-line'; l.textContent = text;
+  b.appendChild(l); scrollToBottom(); return b;
+}
+
+function appendToolLine(block, name, detail) {
+  var l = document.createElement('div'); l.className = 'tool-line';
+  var n = document.createElement('span'); n.className = 'tool-name'; n.textContent = name;
+  var d = document.createElement('span'); d.className = 'tool-detail'; d.textContent = detail || '';
+  l.appendChild(n); if (detail) l.appendChild(d);
+  block.appendChild(l); scrollToBottom();
+}
+
+function appendTokens(block, inp, out) {
+  var l = document.createElement('div'); l.className = 'token-usage';
+  var f = function(n) { return n >= 1000 ? (n/1000).toFixed(1)+'k' : String(n); };
+  l.textContent = '[tokens: ' + f(inp) + ' in / ' + f(out) + ' out]';
+  block.appendChild(l); scrollToBottom();
+}
+
+function appendError(block, msg) {
+  var l = document.createElement('div'); l.className = 'error-line';
+  l.textContent = msg; block.appendChild(l); scrollToBottom();
+}
+
+function appendInfo(block, msg) {
+  var l = document.createElement('div'); l.className = 'info-line';
+  l.textContent = msg; block.appendChild(l); scrollToBottom();
+}
+
+function setStreaming(on) {
+  state.streaming = on; sendBtn.disabled = on;
+  abortBtn.classList[on ? 'add' : 'remove']('visible');
+}
+
+function toolDetail(name, input) {
+  switch (name) {
+    case 'Read': return input.file_path || '';
+    case 'Write': return input.file_path || '';
+    case 'Edit': return input.file_path || '';
+    case 'Glob': return input.pattern + (input.path ? ' in ' + input.path : '');
+    case 'Grep': return '/' + input.pattern + '/' + (input.include ? ' ' + input.include : '');
+    case 'Bash': var c = input.command || ''; return c.length > 80 ? c.slice(0,79) + '\u2026' : c;
+    case 'Git': return input.subcommand + (input.args ? ' ' + JSON.stringify(input.args) : '');
+    default: return '';
+  }
+}
+
+// ─── Tool Execution ───────────────────────────────────────────
+async function executeTool(name, input) {
+  for (var attempt = 0; attempt < MAX_TOOL_RETRIES; attempt++) {
+    try {
+      var r = await fetch('/api/tool', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, input: input }),
+        signal: state.abortController ? state.abortController.signal : undefined
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      var d = await r.json();
+      return { content: String(d.result || '') };
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      if (attempt < MAX_TOOL_RETRIES - 1) await new Promise(function(r) { setTimeout(r, 2000); });
+      else return { content: 'Error: server non raggiungibile. Apri a-Shell.', is_error: true };
+    }
+  }
+}
+
+// ─── SSE Parser ───────────────────────────────────────────────
+async function* parseSSE(response) {
+  var reader = response.body.getReader();
+  var decoder = new TextDecoder();
+  var buf = '';
+  try {
+    while (true) {
+      var r = await reader.read();
+      if (r.done) break;
+      buf += decoder.decode(r.value, { stream: true });
+      var lines = buf.split('\n'); buf = lines.pop();
+      var ev = {};
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (line === '') { if (ev.data) yield ev; ev = {}; }
+        else if (line.startsWith('event: ')) ev.event = line.slice(7).trim();
+        else if (line.startsWith('data: ')) ev.data = line.slice(6).trim();
+      }
+    }
+  } finally { reader.releaseLock(); }
+}
+
+// ─── Agent Loop ───────────────────────────────────────────────
+async function sendMessage(userText) {
+  if (!userText.trim()) return;
+  if (userText.trim().toLowerCase() === 'clear') { state.messages = []; messagesEl.innerHTML = ''; return; }
+
+  state.messages.push({ role: 'user', content: userText });
+  appendUserMessage(userText);
+  setStreaming(true);
+  state.abortController = new AbortController();
+
+  var totalIn = 0, totalOut = 0;
+  var uiBlock = createMsgBlock();
+
+  try {
+    for (var iter = 0; iter < MAX_ITERATIONS; iter++) {
+      var res = await streamOneTurn(uiBlock, totalIn, totalOut);
+      totalIn = res.inputTokens; totalOut = res.outputTokens;
+      if (res.stopReason === 'end_turn' || res.stopReason === 'stop_sequence') {
+        appendTokens(uiBlock, totalIn, totalOut); break;
+      }
+      if (res.stopReason === 'tool_use') {
+        state.messages.push({ role: 'assistant', content: res.content });
+        var results = [];
+        for (var t = 0; t < res.toolCalls.length; t++) {
+          var call = res.toolCalls[t];
+          appendToolLine(uiBlock, call.name, toolDetail(call.name, call.input));
+          var tr = await executeTool(call.name, call.input);
+          if (call.name === 'Bash' && (call.input.command||'').trim().startsWith('cd ')) {
+            try {
+              var sr = await fetch('/api/status'); if (sr.ok) { var sd = await sr.json();
+                if (sd.cwd) { state.cwd = sd.cwd; document.getElementById('status-cwd').textContent = sd.cwd; }
+              }
+            } catch(e) {}
+          }
+          if (tr.is_error) appendInfo(uiBlock, tr.content);
+          results.push({ type: 'tool_result', tool_use_id: call.id, content: tr.content, is_error: tr.is_error || false });
+        }
+        state.messages.push({ role: 'user', content: results });
+        continue;
+      }
+      appendTokens(uiBlock, totalIn, totalOut); break;
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') appendError(uiBlock, err.message || String(err));
+  } finally {
+    setStreaming(false); state.abortController = null; scrollToBottom();
+  }
+}
+
+async function streamOneTurn(uiBlock, prevIn, prevOut) {
+  var content = [], toolInput = '', textContent = '', textEl = null;
+  var currentTool = null, stopReason = null;
+  var inTok = prevIn, outTok = prevOut;
+
+  var response = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({ model: state.model, max_tokens: 8192, system: buildSystemPrompt(), tools: TOOLS, messages: state.messages, stream: true }),
+    signal: state.abortController ? state.abortController.signal : undefined
+  });
+
+  if (!response.ok) {
+    var errBody = await response.text();
+    var errMsg = 'API error ' + response.status;
+    try { var ej = JSON.parse(errBody); errMsg = (ej.error && ej.error.message) || errMsg; } catch(e) {}
+    throw new Error(errMsg);
+  }
+
+  function ensureTextEl() {
+    if (!textEl) { textEl = document.createElement('div'); textEl.className = 'assistant-text streaming-cursor'; uiBlock.appendChild(textEl); }
+  }
+
+  for await (var ev of parseSSE(response)) {
+    if (!ev.data) continue;
+    var d; try { d = JSON.parse(ev.data); } catch(e) { continue; }
+
+    if (d.type === 'message_start' && d.message && d.message.usage) {
+      inTok = prevIn + (d.message.usage.input_tokens || 0);
+    } else if (d.type === 'content_block_start') {
+      var cb = d.content_block;
+      if (cb.type === 'text') { ensureTextEl(); textContent = ''; }
+      else if (cb.type === 'tool_use') {
+        if (textEl) { textEl.classList.remove('streaming-cursor'); textEl.innerHTML = ''; textEl.appendChild(renderMarkdown(textContent)); content.push({ type: 'text', text: textContent }); textEl = null; textContent = ''; }
+        currentTool = { id: cb.id, name: cb.name, input: {} }; toolInput = '';
+      }
+    } else if (d.type === 'content_block_delta') {
+      if (d.delta.type === 'text_delta') { textContent += d.delta.text; ensureTextEl(); textEl.textContent = textContent; scrollToBottom(); }
+      else if (d.delta.type === 'input_json_delta') { toolInput += d.delta.partial_json; }
+    } else if (d.type === 'content_block_stop') {
+      if (currentTool) {
+        try { currentTool.input = JSON.parse(toolInput || '{}'); } catch(e) { currentTool.input = {}; }
+        content.push({ type: 'tool_use', id: currentTool.id, name: currentTool.name, input: currentTool.input });
+        currentTool = null; toolInput = '';
+      } else if (textEl) {
+        textEl.classList.remove('streaming-cursor'); textEl.innerHTML = ''; textEl.appendChild(renderMarkdown(textContent));
+        content.push({ type: 'text', text: textContent }); textEl = null; textContent = '';
+      }
+    } else if (d.type === 'message_delta') {
+      if (d.delta && d.delta.stop_reason) stopReason = d.delta.stop_reason;
+      if (d.usage) outTok = prevOut + (d.usage.output_tokens || 0);
+    } else if (d.type === 'error') {
+      throw new Error(d.error ? (d.error.message || JSON.stringify(d.error)) : 'Stream error');
+    }
+  }
+
+  if (textEl) { textEl.classList.remove('streaming-cursor'); textEl.innerHTML = ''; textEl.appendChild(renderMarkdown(textContent)); content.push({ type: 'text', text: textContent }); }
+  if ((stopReason === 'end_turn' || stopReason === 'stop_sequence') && content.length > 0) state.messages.push({ role: 'assistant', content: content });
+
+  return { stopReason: stopReason, content: content, toolCalls: content.filter(function(c) { return c.type === 'tool_use'; }), inputTokens: inTok, outputTokens: outTok };
+}
+
+// ─── Settings ─────────────────────────────────────────────────
+function saveSettings(key, model) {
+  localStorage.setItem('cm_key', key); localStorage.setItem('cm_model', model);
+  state.apiKey = key; state.model = model;
+  document.getElementById('status-model').textContent = model;
+}
+
+function initApp(key, model) {
+  state.apiKey = key; state.model = model;
+  document.getElementById('status-model').textContent = model;
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  fetch('/api/status').then(function(r) { if (r.ok) return r.json(); }).then(function(d) {
+    if (d && d.cwd) { state.cwd = d.cwd; document.getElementById('status-cwd').textContent = d.cwd; }
+  }).catch(function() { document.getElementById('status-cwd').textContent = '(server offline)'; });
+  userInputEl.focus();
+}
+
+// ─── Events ───────────────────────────────────────────────────
+document.getElementById('setup-start').addEventListener('click', function() {
+  var key = document.getElementById('setup-key').value.trim();
+  var model = document.getElementById('setup-model').value;
+  if (!key) { document.getElementById('setup-key').style.borderColor = 'var(--red)'; return; }
+  saveSettings(key, model); initApp(key, model);
+});
+document.getElementById('setup-key').addEventListener('keydown', function(e) { if (e.key === 'Enter') document.getElementById('setup-start').click(); });
+
+function handleSend() { if (state.streaming) return; var t = userInputEl.value.trim(); if (!t) return; userInputEl.value = ''; sendMessage(t); }
+sendBtn.addEventListener('click', handleSend);
+userInputEl.addEventListener('keydown', function(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } });
+abortBtn.addEventListener('click', function() { if (state.abortController) state.abortController.abort(); });
+document.addEventListener('keydown', function(e) { if ((e.key === 'Escape' || (e.ctrlKey && e.key === 'c')) && state.streaming && state.abortController) state.abortController.abort(); });
+
+var settingsOverlay = document.getElementById('settings-overlay');
+document.getElementById('gear-btn').addEventListener('click', function() {
+  document.getElementById('settings-key').value = state.apiKey;
+  document.getElementById('settings-model').value = state.model;
+  settingsOverlay.classList.add('visible');
+});
+document.getElementById('settings-cancel').addEventListener('click', function() { settingsOverlay.classList.remove('visible'); });
+document.getElementById('settings-save').addEventListener('click', function() {
+  var k = document.getElementById('settings-key').value.trim();
+  var m = document.getElementById('settings-model').value;
+  if (k) saveSettings(k, m);
+  settingsOverlay.classList.remove('visible');
+});
+document.getElementById('settings-clear').addEventListener('click', function() {
+  state.messages = []; messagesEl.innerHTML = ''; settingsOverlay.classList.remove('visible');
+});
+settingsOverlay.addEventListener('click', function(e) { if (e.target === settingsOverlay) settingsOverlay.classList.remove('visible'); });
+
+// ─── Boot ─────────────────────────────────────────────────────
+(function() {
+  var k = localStorage.getItem('cm_key') || '';
+  var m = localStorage.getItem('cm_model') || 'claude-sonnet-4-6';
+  if (k) initApp(k, m);
+  else { document.getElementById('setup-screen').style.display = 'flex'; document.getElementById('app').style.display = 'none'; }
+})();
+</script>
+</body>
+</html>

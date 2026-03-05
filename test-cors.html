@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CORS Test</title>
+<style>
+body { font-family: -apple-system, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; background: #1a1a2e; color: #e0e0e0; }
+#log { white-space: pre-wrap; background: #16213e; padding: 16px; border-radius: 8px; min-height: 200px; font-family: monospace; font-size: 14px; }
+button { background: #6c63ff; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; margin-top: 16px; }
+button:disabled { opacity: 0.5; }
+.ok { color: #4ade80; }
+.err { color: #f87171; }
+.info { color: #60a5fa; }
+</style>
+</head><body>
+<h2>Claude Mobile — CORS Test</h2>
+<p>Questo test verifica che Safari possa chiamare l'API Anthropic direttamente, senza server proxy.</p>
+<div id="log">Premi il bottone per iniziare il test.\n</div>
+<button id="btn" onclick="runTest()">Esegui Test</button>
+<script>
+const KEY = prompt('Enter your Anthropic API key:') || '';
+const log = document.getElementById('log');
+const btn = document.getElementById('btn');
+
+function w(msg, cls) {
+  const span = document.createElement('span');
+  span.className = cls || '';
+  span.textContent = msg + '\n';
+  log.appendChild(span);
+  log.scrollTop = log.scrollHeight;
+}
+
+async function runTest() {
+  btn.disabled = true;
+  log.innerHTML = '';
+
+  // Test 1: Basic fetch
+  w('Test 1: fetch() verso api.anthropic.com...', 'info');
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 30,
+        messages: [{ role: 'user', content: 'Say "CORS works!" and nothing else.' }],
+        stream: true,
+      }),
+    });
+
+    w('Status: ' + res.status, res.ok ? 'ok' : 'err');
+    w('Content-Type: ' + res.headers.get('content-type'), 'info');
+    w('CORS Allow-Origin: ' + (res.headers.get('access-control-allow-origin') || 'non visibile (ok in browser)'), 'info');
+
+    if (!res.ok) {
+      const text = await res.text();
+      w('Errore: ' + text, 'err');
+      btn.disabled = false;
+      return;
+    }
+
+    // Test 2: SSE streaming
+    w('\nTest 2: Streaming SSE...', 'info');
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+    let chunks = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks++;
+      const text = decoder.decode(value, { stream: true });
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const ev = JSON.parse(line.slice(6));
+          if (ev.type === 'content_block_delta' && ev.delta?.text) {
+            fullText += ev.delta.text;
+          }
+        } catch (e) {}
+      }
+    }
+
+    w('Chunks ricevuti: ' + chunks, 'ok');
+    w('Risposta: ' + fullText, 'ok');
+    w('\n=== TUTTI I TEST PASSATI ===', 'ok');
+    w('Safari può chiamare Anthropic API direttamente!', 'ok');
+    w('Nessun server proxy necessario.', 'ok');
+
+  } catch (err) {
+    w('ERRORE: ' + err.message, 'err');
+    if (err.message.includes('CORS') || err.message.includes('cross-origin')) {
+      w('CORS bloccato — serve un proxy.', 'err');
+    }
+  }
+  btn.disabled = false;
+}
+</script>
+</body></html>
