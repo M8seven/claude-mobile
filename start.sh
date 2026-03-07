@@ -11,7 +11,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-cd ~Documents/../Hub/dev/tools/claude-mobile
+cd ~Documents/../Hub/dev/claude-mobile
 
 echo "Starting claude-mobile..."
 python3 claude-mobile.py
